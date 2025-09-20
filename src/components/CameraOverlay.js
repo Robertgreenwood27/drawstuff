@@ -4,7 +4,7 @@ const CameraOverlay = () => {
   const [stream, setStream] = useState(null);
   const [opacity, setOpacity] = useState(0.5);
   const [error, setError] = useState(null);
-  const [imageUrl, setImageUrl] = useState('/api/placeholder/400/600'); // Fallback placeholder
+  const [imageUrl, setImageUrl] = useState('/api/placeholder/400/600');
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [rotate, setRotate] = useState(0);
@@ -16,6 +16,7 @@ const CameraOverlay = () => {
   const [initialScale, setInitialScale] = useState(1);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
   const [showDebug, setShowDebug] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const videoRef = useRef(null);
   const overlayRef = useRef(null);
 
@@ -78,8 +79,33 @@ const CameraOverlay = () => {
         setRotate(0);
         setMirror(false);
         setImageUrl(url);
+
+        // Trigger full-screen after image load
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen().then(() => {
+            setIsFullscreen(true);
+          }).catch(err => {
+            console.error("Fullscreen request failed:", err);
+          });
+        }
       };
       img.src = url;
+    }
+  };
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().then(() => {
+        setIsFullscreen(true);
+      }).catch(err => {
+        console.error("Fullscreen request failed:", err);
+      });
+    } else {
+      document.exitFullscreen().then(() => {
+        setIsFullscreen(false);
+      }).catch(err => {
+        console.error("Exit fullscreen failed:", err);
+      });
     }
   };
 
@@ -111,7 +137,7 @@ const CameraOverlay = () => {
     if (isPinching && e.touches.length === 2) {
       const currentDist = calculatePinchDistance(e.touches);
       const newScale = initialScale * (currentDist / initialPinchDist);
-      setScale(Math.max(0.1, Math.min(5, newScale))); // Expanded range for more zoom
+      setScale(Math.max(0.1, Math.min(5, newScale)));
     } else if (isDragging && e.touches.length === 1) {
       setPosition({
         x: e.touches[0].clientX - dragStart.x,
@@ -140,7 +166,7 @@ const CameraOverlay = () => {
           <p className="text-red-500 mb-4">Camera Error: {error}</p>
           <p className="text-sm">Troubleshooting:
             <br />- Use HTTPS (deploy to Vercel or use ngrok for local)
-            <br />- Grant camera permissions in iOS Settings `&gt;` Safari
+            <br />- Grant camera permissions in iOS Settings > Safari
             <br />- Use Safari (not Chrome/Firefox on iOS)
             <br />- Reload and try again
           </p>
@@ -150,7 +176,7 @@ const CameraOverlay = () => {
   }
 
   return (
-    <div className="relative h-screen w-screen bg-black overflow-hidden touch-none"> {/* touch-none prevents browser interference */}
+    <div className="relative h-[100dvh] w-screen bg-black overflow-hidden touch-none">
       {showDebug && (
         <div className="absolute top-0 left-0 right-0 bg-black/50 text-white text-xs p-2 z-20 flex justify-between">
           <span>Stream: {stream ? 'Active' : 'Inactive'} | Scale: {scale.toFixed(2)}x | Rotate: {rotate}° | Mirror: {mirror ? 'On' : 'Off'}</span>
@@ -163,12 +189,12 @@ const CameraOverlay = () => {
         autoPlay
         playsInline
         muted
-        className="absolute top-0 left-0 h-full w-full object-cover"
+        className="absolute top-0 left-0 h-[100dvh] w-full object-cover"
       />
       
       <div 
         ref={overlayRef}
-        className="absolute top-0 left-0 w-full h-full"
+        className="absolute top-0 left-0 w-full h-[100dvh]"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
@@ -187,12 +213,20 @@ const CameraOverlay = () => {
       </div>
 
       <div className="absolute bottom-0 left-0 right-0 flex flex-col items-center gap-2 p-4 bg-black/60 z-10">
-        <input
-          type="file"
-          accept="image/*"
-          onChange={handleImageUpload}
-          className="w-3/4 text-white bg-gray-800 p-2 rounded mb-2"
-        />
+        <div className="w-3/4 flex gap-2">
+          <input
+            type="file"
+            accept="image/*"
+            onChange={handleImageUpload}
+            className="grow text-white bg-gray-800 p-2 rounded"
+          />
+          <button
+            onClick={toggleFullscreen}
+            className="bg-gray-800 text-white p-2 rounded text-xs"
+          >
+            {isFullscreen ? 'Exit Fullscreen' : 'Go Fullscreen'}
+          </button>
+        </div>
         <div className="w-3/4 grid grid-cols-2 gap-2 text-white text-xs">
           <label>Opacity</label>
           <input type="range" min="0" max="1" step="0.05" value={opacity} onChange={(e) => setOpacity(parseFloat(e.target.value))} />
@@ -208,7 +242,7 @@ const CameraOverlay = () => {
             {mirror ? 'On' : 'Off'}
           </button>
         </div>
-        <button onClick={handleReset} className="mt-2 bg-blue-500 text-white p-2 rounded w-3/4">
+        <button onClick={handleReset} className="bg-blue-500 text-white p-2 rounded w-3/4">
           Reset Overlay
         </button>
       </div>
