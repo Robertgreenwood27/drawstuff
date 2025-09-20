@@ -17,6 +17,7 @@ const CameraOverlay = () => {
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
   const [showDebug, setShowDebug] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showMenu, setShowMenu] = useState(true);
   const videoRef = useRef(null);
   const overlayRef = useRef(null);
 
@@ -80,13 +81,16 @@ const CameraOverlay = () => {
         setMirror(false);
         setImageUrl(url);
 
-        // Trigger full-screen after image load
+        // Enter full-screen and hide menu
         if (!document.fullscreenElement) {
           document.documentElement.requestFullscreen().then(() => {
             setIsFullscreen(true);
+            setShowMenu(false); // Hide menu on full-screen
           }).catch(err => {
             console.error("Fullscreen request failed:", err);
           });
+        } else {
+          setShowMenu(false); // Hide menu even if already in full-screen
         }
       };
       img.src = url;
@@ -97,16 +101,22 @@ const CameraOverlay = () => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen().then(() => {
         setIsFullscreen(true);
+        setShowMenu(false); // Hide menu when entering full-screen
       }).catch(err => {
         console.error("Fullscreen request failed:", err);
       });
     } else {
       document.exitFullscreen().then(() => {
         setIsFullscreen(false);
+        setShowMenu(true); // Show menu when exiting full-screen
       }).catch(err => {
         console.error("Exit fullscreen failed:", err);
       });
     }
+  };
+
+  const toggleMenu = () => {
+    setShowMenu(!showMenu);
   };
 
   const calculatePinchDistance = (touches) => {
@@ -166,7 +176,7 @@ const CameraOverlay = () => {
           <p className="text-red-500 mb-4">Camera Error: {error}</p>
           <p className="text-sm">Troubleshooting:
             <br />- Use HTTPS (deploy to Vercel or use ngrok for local)
-            <br />- Grant camera permissions in iOS Settings `&gt;` Safari
+            <br />- Grant camera permissions in iOS Settings &gt; Safari
             <br />- Use Safari (not Chrome/Firefox on iOS)
             <br />- Reload and try again
           </p>
@@ -212,40 +222,55 @@ const CameraOverlay = () => {
         />
       </div>
 
-      <div className="absolute bottom-0 left-0 right-0 flex flex-col items-center gap-2 p-4 bg-black/60 z-10">
-        <div className="w-3/4 flex gap-2">
-          <input
-            type="file"
-            accept="image/*"
-            onChange={handleImageUpload}
-            className="grow text-white bg-gray-800 p-2 rounded"
-          />
-          <button
-            onClick={toggleFullscreen}
-            className="bg-gray-800 text-white p-2 rounded text-xs"
-          >
-            {isFullscreen ? 'Exit Fullscreen' : 'Go Fullscreen'}
+      {showMenu && (
+        <div className="absolute bottom-0 left-0 right-0 flex flex-col items-center gap-2 p-4 bg-black/60 z-10">
+          <div className="w-3/4 flex gap-2">
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleImageUpload}
+              className="grow text-white bg-gray-800 p-2 rounded"
+            />
+            <button
+              onClick={toggleFullscreen}
+              className="bg-gray-800 text-white p-2 rounded text-xs"
+            >
+              {isFullscreen ? 'Exit Fullscreen' : 'Go Fullscreen'}
+            </button>
+          </div>
+          <div className="w-3/4 grid grid-cols-2 gap-2 text-white text-xs">
+            <label>Opacity</label>
+            <input type="range" min="0" max="1" step="0.05" value={opacity} onChange={(e) => setOpacity(parseFloat(e.target.value))} />
+            
+            <label>Scale</label>
+            <input type="range" min="0.1" max="5" step="0.1" value={scale} onChange={(e) => setScale(parseFloat(e.target.value))} />
+            
+            <label>Rotate</label>
+            <input type="range" min="-180" max="180" step="5" value={rotate} onChange={(e) => setRotate(parseFloat(e.target.value))} />
+            
+            <label>Mirror</label>
+            <button onClick={() => setMirror(!mirror)} className="bg-gray-800 p-2 rounded">
+              {mirror ? 'On' : 'Off'}
+            </button>
+          </div>
+          <button onClick={handleReset} className="bg-blue-500 text-white p-2 rounded w-3/4">
+            Reset Overlay
+          </button>
+          <button onClick={toggleMenu} className="bg-gray-800 text-white p-2 rounded w-3/4">
+            Hide Menu
           </button>
         </div>
-        <div className="w-3/4 grid grid-cols-2 gap-2 text-white text-xs">
-          <label>Opacity</label>
-          <input type="range" min="0" max="1" step="0.05" value={opacity} onChange={(e) => setOpacity(parseFloat(e.target.value))} />
-          
-          <label>Scale</label>
-          <input type="range" min="0.1" max="5" step="0.1" value={scale} onChange={(e) => setScale(parseFloat(e.target.value))} />
-          
-          <label>Rotate</label>
-          <input type="range" min="-180" max="180" step="5" value={rotate} onChange={(e) => setRotate(parseFloat(e.target.value))} />
-          
-          <label>Mirror</label>
-          <button onClick={() => setMirror(!mirror)} className="bg-gray-800 p-2 rounded">
-            {mirror ? 'On' : 'Off'}
-          </button>
-        </div>
-        <button onClick={handleReset} className="bg-blue-500 text-white p-2 rounded w-3/4">
-          Reset Overlay
+      )}
+
+      {!showMenu && (
+        <button
+          onClick={toggleMenu}
+          className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/50 text-white text-2xl p-2 rounded-full w-12 h-12 flex items-center justify-center z-20"
+          style={{ transform: 'rotate(90deg)' }} // Rotate &gt; to look like upward chevron
+        >
+          &gt;
         </button>
-      </div>
+      )}
     </div>
   );
 };
