@@ -4,21 +4,26 @@ const CameraOverlay = () => {
   const [stream, setStream] = useState(null);
   const [opacity, setOpacity] = useState(0.5);
   const [error, setError] = useState(null);
-  const [imageUrl, setImageUrl] = useState('/api/placeholder/400/600');
-  const videoRef = useRef(null);
-  
-  // New state for zoom and pan
+  const [imageUrl, setImageUrl] = useState('/api/placeholder/400/600'); // Fallback placeholder
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [rotate, setRotate] = useState(0);
+  const [mirror, setMirror] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [isPinching, setIsPinching] = useState(false);
+  const [initialPinchDist, setInitialPinchDist] = useState(0);
+  const [initialScale, setInitialScale] = useState(1);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
-  
+  const [showDebug, setShowDebug] = useState(true);
+  const videoRef = useRef(null);
+  const overlayRef = useRef(null);
+
   useEffect(() => {
     async function setupCamera() {
       try {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          throw new Error("Camera API not available in your browser");
+          throw new Error("Camera API not supported in this browser. Try Safari on iOS over HTTPS.");
         }
 
         const mediaStream = await navigator.mediaDevices.getUserMedia({
@@ -31,13 +36,12 @@ const CameraOverlay = () => {
         if (videoRef.current) {
           videoRef.current.srcObject = mediaStream;
           videoRef.current.onloadedmetadata = () => {
-            videoRef.current.play()
-              .catch(e => console.error("Video playback failed:", e));
+            videoRef.current.play().catch(e => console.error("Video playback failed:", e));
           };
         }
       } catch (err) {
         console.error("Camera access error:", err);
-        setError(err.message);
+        setError(err.message || "Failed to access camera. Ensure HTTPS, permissions, and Safari.");
       }
     }
 
@@ -56,31 +60,45 @@ const CameraOverlay = () => {
       const url = URL.createObjectURL(file);
       const img = new Image();
       img.onload = () => {
-        // Calculate scale to fit image to screen
-        const screenRatio = window.innerHeight / window.innerWidth;
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
         const imageRatio = img.height / img.width;
-        
-        let newScale = 1;
-        if (imageRatio > screenRatio) {
-          // Image is taller than screen ratio
-          newScale = window.innerHeight / img.height;
+        const viewportRatio = viewportHeight / viewportWidth;
+
+        let fitScale = 1;
+        if (imageRatio > viewportRatio) {
+          fitScale = viewportHeight / img.height;
         } else {
-          // Image is wider than screen ratio
-          newScale = window.innerWidth / img.width;
+          fitScale = viewportWidth / img.width;
         }
-        
+
         setImageSize({ width: img.width, height: img.height });
-        setScale(newScale);
+        setScale(fitScale);
         setPosition({ x: 0, y: 0 });
+        setRotate(0);
+        setMirror(false);
         setImageUrl(url);
       };
       img.src = url;
     }
   };
 
+  const calculatePinchDistance = (touches) => {
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+
   const handleTouchStart = (e) => {
-    if (e.touches.length === 1) {
+    e.preventDefault();
+    if (e.touches.length === 2) {
+      setIsPinching(true);
+      setIsDragging(false);
+      setInitialPinchDist(calculatePinchDistance(e.touches));
+      setInitialScale(scale);
+    } else if (e.touches.length === 1) {
       setIsDragging(true);
+      setIsPinching(false);
       setDragStart({
         x: e.touches[0].clientX - position.x,
         y: e.touches[0].clientY - position.y
@@ -89,15 +107,30 @@ const CameraOverlay = () => {
   };
 
   const handleTouchMove = (e) => {
-    if (isDragging && e.touches.length === 1) {
-      const newX = e.touches[0].clientX - dragStart.x;
-      const newY = e.touches[0].clientY - dragStart.y;
-      setPosition({ x: newX, y: newY });
+    e.preventDefault();
+    if (isPinching && e.touches.length === 2) {
+      const currentDist = calculatePinchDistance(e.touches);
+      const newScale = initialScale * (currentDist / initialPinchDist);
+      setScale(Math.max(0.1, Math.min(5, newScale))); // Expanded range for more zoom
+    } else if (isDragging && e.touches.length === 1) {
+      setPosition({
+        x: e.touches[0].clientX - dragStart.x,
+        y: e.touches[0].clientY - dragStart.y
+      });
     }
   };
 
   const handleTouchEnd = () => {
+    setIsPinching(false);
     setIsDragging(false);
+  };
+
+  const handleReset = () => {
+    setScale(1);
+    setPosition({ x: 0, y: 0 });
+    setRotate(0);
+    setMirror(false);
+    setOpacity(0.5);
   };
 
   if (error) {
@@ -105,10 +138,11 @@ const CameraOverlay = () => {
       <div className="flex items-center justify-center h-screen bg-black text-white p-4">
         <div className="text-center">
           <p className="text-red-500 mb-4">Camera Error: {error}</p>
-          <p className="text-sm">Please ensure you have:
-            <br />1. Granted camera permissions
-            <br />2. Are using HTTPS (required for camera access)
-            <br />3. Are using a supported browser
+          <p className="text-sm">Troubleshooting:
+            <br />- Use HTTPS (deploy to Vercel or use ngrok for local)
+            <br />- Grant camera permissions in iOS Settings > Safari
+            <br />- Use Safari (not Chrome/Firefox on iOS)
+            <br />- Reload and try again
           </p>
         </div>
       </div>
@@ -116,19 +150,24 @@ const CameraOverlay = () => {
   }
 
   return (
-    <div className="relative h-screen w-full bg-black overflow-hidden">
-      <div className="absolute top-0 left-0 right-0 bg-black/50 text-white text-xs p-2 z-10">
-        Stream active: {stream ? 'Yes' : 'No'} | Scale: {scale.toFixed(2)}x
-      </div>
-      
+    <div className="relative h-screen w-screen bg-black overflow-hidden touch-none"> {/* touch-none prevents browser interference */}
+      {showDebug && (
+        <div className="absolute top-0 left-0 right-0 bg-black/50 text-white text-xs p-2 z-20 flex justify-between">
+          <span>Stream: {stream ? 'Active' : 'Inactive'} | Scale: {scale.toFixed(2)}x | Rotate: {rotate}° | Mirror: {mirror ? 'On' : 'Off'}</span>
+          <button onClick={() => setShowDebug(false)} className="text-blue-300">Hide</button>
+        </div>
+      )}
+
       <video 
         ref={videoRef}
         autoPlay
         playsInline
-        className="h-full w-full object-cover"
+        muted
+        className="absolute top-0 left-0 h-full w-full object-cover"
       />
       
       <div 
+        ref={overlayRef}
         className="absolute top-0 left-0 w-full h-full"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
@@ -137,43 +176,41 @@ const CameraOverlay = () => {
         <img 
           src={imageUrl}
           alt="Overlay"
-          className="absolute origin-center object-contain"
+          className="absolute origin-center"
           style={{
             opacity,
-            transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
-            width: imageSize.width || '100%',
-            height: imageSize.height || '100%',
+            transform: `translate(${position.x}px, ${position.y}px) rotate(${rotate}deg) scale(${scale}) ${mirror ? 'scaleX(-1)' : ''}`,
+            width: `${imageSize.width}px`,
+            height: `${imageSize.height}px`,
           }}
         />
       </div>
 
-      <div className="absolute bottom-4 left-0 right-0 flex flex-col items-center gap-4 p-4 bg-black/50">
+      <div className="absolute bottom-0 left-0 right-0 flex flex-col items-center gap-2 p-4 bg-black/60 z-10">
         <input
           type="file"
           accept="image/*"
           onChange={handleImageUpload}
-          className="w-full text-white"
+          className="w-3/4 text-white bg-gray-800 p-2 rounded mb-2"
         />
-        <div className="w-full flex flex-col gap-2">
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.1"
-            value={opacity}
-            onChange={(e) => setOpacity(parseFloat(e.target.value))}
-            className="w-full"
-          />
-          <input
-            type="range"
-            min="0.1"
-            max="3"
-            step="0.1"
-            value={scale}
-            onChange={(e) => setScale(parseFloat(e.target.value))}
-            className="w-full"
-          />
+        <div className="w-3/4 grid grid-cols-2 gap-2 text-white text-xs">
+          <label>Opacity</label>
+          <input type="range" min="0" max="1" step="0.05" value={opacity} onChange={(e) => setOpacity(parseFloat(e.target.value))} />
+          
+          <label>Scale</label>
+          <input type="range" min="0.1" max="5" step="0.1" value={scale} onChange={(e) => setScale(parseFloat(e.target.value))} />
+          
+          <label>Rotate</label>
+          <input type="range" min="-180" max="180" step="5" value={rotate} onChange={(e) => setRotate(parseFloat(e.target.value))} />
+          
+          <label>Mirror</label>
+          <button onClick={() => setMirror(!mirror)} className="bg-gray-800 p-2 rounded">
+            {mirror ? 'On' : 'Off'}
+          </button>
         </div>
+        <button onClick={handleReset} className="mt-2 bg-blue-500 text-white p-2 rounded w-3/4">
+          Reset Overlay
+        </button>
       </div>
     </div>
   );
