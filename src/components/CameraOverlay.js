@@ -140,7 +140,7 @@ const CameraOverlay = () => {
           <p className="text-red-500 mb-4">Camera Error: {error}</p>
           <p className="text-sm">Troubleshooting:
             <br />- Use HTTPS (deploy to Vercel or use ngrok for local)
-            <br />- Grant camera permissions in iOS Settings > Safari
+            <br />- Grant camera permissions in iOS Settings `&gt;` Safari
             <br />- Use Safari (not Chrome/Firefox on iOS)
             <br />- Reload and try again
           </p>
