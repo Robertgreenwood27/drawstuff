@@ -18,6 +18,7 @@ const CameraOverlay = () => {
   const [showDebug, setShowDebug] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showMenu, setShowMenu] = useState(true);
+  const [cameraInfo, setCameraInfo] = useState('Unknown');
   const videoRef = useRef(null);
   const overlayRef = useRef(null);
 
@@ -28,10 +29,38 @@ const CameraOverlay = () => {
           throw new Error("Camera API not supported in this browser. Try Safari on iOS over HTTPS.");
         }
 
-        const mediaStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment' },
+        // Try to enumerate devices to find rear cameras
+        let deviceId = null;
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const videoDevices = devices.filter(device => device.kind === 'videoinput');
+          // Look for rear-facing camera (heuristic: labels often include "back" or "rear")
+          const rearCamera = videoDevices.find(device => 
+            device.label.toLowerCase().includes('back') || 
+            device.label.toLowerCase().includes('rear')
+          );
+          if (rearCamera) {
+            deviceId = rearCamera.deviceId;
+            setCameraInfo(rearCamera.label || 'Rear Camera');
+          } else {
+            setCameraInfo('Default Rear Camera');
+          }
+        } catch (err) {
+          console.warn("Device enumeration failed:", err);
+        }
+
+        const constraints = {
+          video: {
+            facingMode: { ideal: 'environment' }, // Prefer rear camera
+            ...(deviceId ? { deviceId: { exact: deviceId } } : {}), // Lock to specific camera if found
+            focusMode: { ideal: 'continuous' }, // Try to stabilize focus (may not work in Safari)
+            width: { ideal: 1920 }, // Prefer higher resolution for clarity
+            height: { ideal: 1080 }
+          },
           audio: false
-        });
+        };
+
+        const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
         
         setStream(mediaStream);
         
@@ -85,12 +114,12 @@ const CameraOverlay = () => {
         if (!document.fullscreenElement) {
           document.documentElement.requestFullscreen().then(() => {
             setIsFullscreen(true);
-            setShowMenu(false); // Hide menu on full-screen
+            setShowMenu(false);
           }).catch(err => {
             console.error("Fullscreen request failed:", err);
           });
         } else {
-          setShowMenu(false); // Hide menu even if already in full-screen
+          setShowMenu(false);
         }
       };
       img.src = url;
@@ -101,14 +130,14 @@ const CameraOverlay = () => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen().then(() => {
         setIsFullscreen(true);
-        setShowMenu(false); // Hide menu when entering full-screen
+        setShowMenu(false);
       }).catch(err => {
         console.error("Fullscreen request failed:", err);
       });
     } else {
       document.exitFullscreen().then(() => {
         setIsFullscreen(false);
-        setShowMenu(true); // Show menu when exiting full-screen
+        setShowMenu(true);
       }).catch(err => {
         console.error("Exit fullscreen failed:", err);
       });
@@ -189,7 +218,7 @@ const CameraOverlay = () => {
     <div className="relative h-[100dvh] w-screen bg-black overflow-hidden touch-none">
       {showDebug && (
         <div className="absolute top-0 left-0 right-0 bg-black/50 text-white text-xs p-2 z-20 flex justify-between">
-          <span>Stream: {stream ? 'Active' : 'Inactive'} | Scale: {scale.toFixed(2)}x | Rotate: {rotate}° | Mirror: {mirror ? 'On' : 'Off'}</span>
+          <span>Stream: {stream ? 'Active' : 'Inactive'} | Camera: {cameraInfo} | Scale: {scale.toFixed(2)}x | Rotate: {rotate}° | Mirror: {mirror ? 'On' : 'Off'}</span>
           <button onClick={() => setShowDebug(false)} className="text-blue-300">Hide</button>
         </div>
       )}
@@ -266,7 +295,7 @@ const CameraOverlay = () => {
         <button
           onClick={toggleMenu}
           className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/50 text-white text-2xl p-2 rounded-full w-12 h-12 flex items-center justify-center z-20"
-          style={{ transform: 'rotate(90deg)' }} // Rotate &gt; to look like upward chevron
+          style={{ transform: 'rotate(90deg)' }}
         >
           &gt;
         </button>
